@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+
+const path = require('path');
+const fs = require('fs');
+const split = require('split');
+const args = require('minimist')(process.argv.slice(2));
+
+const env = args.env || '.env.example';
+const config = args.config || 'config.js';
+
+const readConfig = async () => {
+  return new Promise((resolve, reject) => {
+    const vars = [];
+    fs.createReadStream(path.resolve(process.cwd(), config))
+      .on('error', reject)
+      .pipe(split())
+      .on('data', (line) => {
+        const match = line.match(/process\.env\.([A-Z0-9_]+)/);
+        if (match) {
+          vars.push(match[1]);
+        }
+      })
+      .on('end', () => resolve(vars))
+      .on('error', reject);
+  });
+};
+
+const readEnv = async () => {
+  return new Promise((resolve, reject) => {
+    const vars = [];
+    fs.createReadStream(path.resolve(process.cwd(), env))
+      .on('error', reject)
+      .pipe(split())
+      .on('data', (line) => {
+        const match = line.match(/^([A-Z0-9_]+)/);
+        if (match) {
+          vars.push(match[1]);
+        }
+      })
+      .on('end', () => resolve(vars))
+      .on('error', reject)
+  });
+};
+
+Promise.resolve()
+  .then(async() => {
+    const config = await readConfig();
+    const env = await readEnv();
+    const missing = config.filter(key => !env.includes(key));
+    if (missing.length) {
+      console.log('The following environment variables used in config are not documented:');
+      missing.forEach(key => {
+        console.log(`* ${key}`);
+      });
+    } else {
+      console.log('No undocumented environment variables detected');
+    }
+  })
+  .catch(e => {
+    console.error(e.stack);
+    process.exit(1);
+  })
